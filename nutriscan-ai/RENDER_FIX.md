@@ -1,28 +1,13 @@
 # Render Deploy Fix — Root Directory
 
-## Problem
-```
-Root directory "backend" does not exist
-```
+## Fixed
 
-Your repo structure is:
+Backend has been moved to repo root. Structure is now:
 ```
 Nutrition/ (repo root)
+├── backend/       ← Backend code (Render uses Root Directory: backend)
 └── nutriscan-ai/
-    ├── backend/   ← Backend code is here
-    └── frontend/
+    └── frontend/  ← Frontend (Netlify uses nutriscan-ai/frontend)
 ```
 
-## Fix (1 minute)
-
-1. Go to [Render Dashboard](https://dashboard.render.com)
-2. Open your **NutriScan-AI** (or backend) Web Service
-3. Click **Settings** (left sidebar)
-4. Find **Root Directory**
-5. Change from `backend` to **`nutriscan-ai/backend`**
-6. Click **Save Changes**
-7. Go to **Manual Deploy** → **Deploy latest commit**
-
----
-
-After this, builds will succeed and the 500 errors should stop (they were from the failed deploy).
+Render with **Root Directory: `backend`** will now work. Push to main to trigger deploy.
