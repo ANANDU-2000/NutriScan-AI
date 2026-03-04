@@ -27,6 +27,8 @@
 
 ### Environment Variables (add in Render)
 
+**Important:** Add `PYTHON_VERSION=3.12.7` — Python 3.14 breaks psycopg2. (Or use `.python-version` in backend.)
+
 | Key | Value |
 |-----|-------|
 | `DATABASE_URL` | **Internal** Database URL from dashboard |
