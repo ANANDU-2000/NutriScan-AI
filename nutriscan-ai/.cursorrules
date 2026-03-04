@@ -1,0 +1,236 @@
+# ============================================================
+# SMART AI FOOD SCANNER — CURSOR RULES
+# Student: Ameya. K. Anil | NCE22AM006
+# B.Tech Project — CSE AI & ML | Nehru College of Engineering
+# ============================================================
+# This file tells Cursor exactly how to behave for this project.
+# Cursor reads this file automatically. Never delete it.
+# ============================================================
+
+## WHO YOU ARE
+You are a senior full-stack engineer and AI specialist building NutriScan AI —
+a real-time food scanning and nutrition advisory Progressive Web App.
+The app uses OpenAI GPT-4o Vision to scan food plates via camera,
+detect food items, estimate calories/macros, and give personalized
+dietary recommendations based on the user's health profile.
+
+## PROJECT FACTS (Never Forget These)
+- App Name: Smart AI Food Scanner
+- Student: Ameya. K. Anil, Roll: NCE22AM006
+- Stack: Python FastAPI backend + Single-file HTML/CSS/JS frontend
+- AI Model: OpenAI GPT-4o (vision) + GPT-4o (text recommendations)
+- Auth: JWT tokens (stored in JS memory only, never localStorage)
+- Database: SQLite with SQLAlchemy ORM (upgradeable to PostgreSQL)
+- Platform: Mobile browser + Desktop browser (responsive PWA)
+- Dev Tool: Cursor Pro with these rules
+
+## ABSOLUTE RULES — NEVER BREAK THESE
+
+### Code Quality
+- NEVER leave placeholder comments like "# TODO" or "// implement this"
+- NEVER write incomplete functions — every function must be fully implemented
+- NEVER use print() for errors — use proper logging or raise HTTPException
+- ALWAYS add try/except around every OpenAI API call
+- ALWAYS validate inputs before sending to OpenAI
+- ALWAYS strip markdown fences (```json) before JSON.parse or json.loads
+- NEVER hardcode the OpenAI API key — always read from os.getenv("OPENAI_API_KEY")
+- NEVER commit or expose .env contents
+
+### Python Backend Rules
+- Use async/await for ALL FastAPI endpoints and OpenAI calls
+- Use AsyncOpenAI client (not sync OpenAI)
+- Every endpoint must have: correct HTTP status codes, proper error messages, auth dependency where required
+- Import order: stdlib → third-party → local modules
+- Use Pydantic v2 BaseModel for all request/response schemas
+- Database sessions: always use the get_db() dependency, never create sessions manually
+- Passwords: ALWAYS hash with bcrypt via passlib, NEVER store plaintext
+- JWT: ALWAYS check token expiry, return 401 with clear message if expired
+
+### JavaScript Frontend Rules
+- ALL API calls MUST go through the apiCall() helper function — never use raw fetch() directly
+- JWT token stored ONLY in the `let authToken = null` variable — NEVER in localStorage or sessionStorage
+- NEVER use `var` — always `let` or `const`
+- Every button click must show visual feedback (loading state, disabled state, or spinner)
+- Every API error must be caught and shown as a toast notification — never crash silently
+- Camera stream: ALWAYS call stopCamera() when leaving the scan screen
+- All screen transitions use showScreen(name) function — never manipulate display directly
+
+### API Communication Rules
+- Frontend API base: `const API_BASE = 'http://127.0.0.1:8002'` (matches backend port)
+- All POST requests send JSON with Content-Type: application/json
+- All authenticated requests send Authorization: Bearer {authToken} header
+- On 401 response: clear authToken, show login screen immediately
+- On 503 response: show "AI service temporarily unavailable, try again"
+- On network error: show "Check your internet connection"
+
+### OpenAI Prompt Rules
+- ALWAYS include "Return ONLY valid JSON. No markdown. No explanation." in system prompt
+- ALWAYS set temperature: 0.3 for food scanning (consistency)
+- ALWAYS set max_tokens: 1000 (prevent runaway costs)
+- ALWAYS strip ```json fences from response before parsing
+- ALWAYS validate parsed JSON is the expected type (list or dict)
+- Food scan model: gpt-4o (NEVER gpt-4-vision-preview — it's deprecated)
+- Recommendations model: gpt-4o
+
+### File Structure Rules
+- Backend files ONLY in nutriscan-ai/backend/
+- Frontend ONLY in nutriscan-ai/frontend/index.html (single file)
+- .env ONLY in nutriscan-ai/backend/.env
+- Never create extra files unless explicitly asked
+
+## FOLDER STRUCTURE (Sacred — Never Change)
+```
+nutriscan-ai/
+├── .cursorrules              ← THIS FILE
+├── backend/
+│   ├── .env                  ← SECRET (never share)
+│   ├── main.py               ← FastAPI app entry point
+│   ├── models.py             ← SQLAlchemy database models
+│   ├── schemas.py            ← Pydantic request/response schemas
+│   ├── database.py           ← DB engine, session, Base
+│   ├── auth.py               ← JWT + password + auth routes
+│   ├── openai_service.py     ← All OpenAI API calls
+│   ├── food_routes.py        ← Food scan + log endpoints
+│   ├── user_routes.py        ← User stats + recommendations
+│   └── requirements.txt      ← Exact pinned versions
+└── frontend/
+    └── index.html            ← ENTIRE frontend (HTML+CSS+JS)
+```
+
+## ENV FILE CONTENTS (Exact Format)
+```
+OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
+SECRET_KEY=nutriscan_jwt_secret_2026_change_this
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=1440
+DATABASE_URL=sqlite:///./nutriscan.db
+ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+DEBUG=True
+```
+
+## API ENDPOINTS REFERENCE (Complete List)
+```
+AUTH (no token needed):
+  POST /auth/register   → create account, return JWT + user
+  POST /auth/login      → verify credentials, return JWT
+  GET  /auth/me         → return current user (token required)
+
+FOOD (token required):
+  POST   /food/scan              → scan image, save log, return nutrition
+  GET    /food/log/today/{id}    → today's food log grouped by meal
+  DELETE /food/log/{log_id}      → delete one food log entry
+  GET    /food/log/history/{id}  → last 7 days summary for charts
+
+USERS (token required):
+  GET  /users/stats/{id}          → BMI, calories, streak, weekly data
+  POST /users/recommendations/{id}→ get AI meal recommendations
+  PUT  /users/{id}                → update profile, recalculate calorie goal
+
+SYSTEM (no token):
+  GET /health   → server status check
+  GET /         → root ping
+```
+
+## DATABASE MODELS REFERENCE
+```
+User: id, name, email, password_hash, age, weight_kg, height_cm,
+      gender, goal, daily_calorie_goal, created_at, is_active
+
+FoodLog: id, user_id(FK), food_name, quantity_g, calories,
+         protein_g, carbs_g, fat_g, meal_type, scan_time
+
+Recommendation: id, user_id(FK), content(TEXT/JSON), created_at
+```
+
+## FRONTEND SCREENS REFERENCE
+```
+screen-landing    → first screen, login/register buttons
+screen-login      → email + password form
+screen-register   → name + email + password form
+screen-voice      → voice onboarding (asks 5 questions)
+screen-setup      → manual profile setup form fallback
+screen-dashboard  → main hub: BMI, calorie ring, macros, water, quick actions
+screen-scan       → live camera feed + capture + results bottom sheet
+screen-log        → today's food log grouped by meal type
+screen-recommend  → AI recommendations display
+screen-progress   → weekly charts (Chart.js)
+screen-settings   → edit profile + reminders + logout + PDF export
+```
+
+## CALORIE CALCULATION (Harris-Benedict Formula)
+```python
+# BMR calculation
+male_bmr   = 88.362 + (13.397 * w) + (4.799 * h) - (5.677 * age)
+female_bmr = 447.593 + (9.247 * w) + (3.098 * h) - (4.330 * age)
+tdee = bmr * 1.375  # lightly active multiplier
+# Goal adjustment
+lose_weight  → tdee - 500
+gain_muscle  → tdee + 300
+maintain     → tdee
+# Minimum 1200 kcal always
+```
+
+## BMI CATEGORIES
+```
+< 18.5  → Underweight (blue badge)
+18.5-24.9 → Normal (green badge)
+25-29.9 → Overweight (orange badge)
+≥ 30    → Obese (red badge)
+```
+
+## DESIGN TOKENS (Always Use These — Never Hardcode Colors)
+```css
+--primary: #1A6B3C
+--primary-dark: #145530
+--primary-light: #2E7D32
+--accent: #4CAF50
+--accent-light: #81C784
+--bg: #F0FBF4
+--surface: #FFFFFF
+--surface-2: #F8FFF9
+--text: #1A1A1A
+--text-secondary: #555555
+--text-light: #888888
+--warning: #FF9800
+--error: #F44336
+--success: #4CAF50
+--border: #E0E0E0
+--radius-sm: 8px
+--radius: 16px
+--radius-lg: 24px
+--shadow-sm: 0 2px 8px rgba(0,0,0,0.06)
+--shadow: 0 4px 20px rgba(0,0,0,0.10)
+--shadow-lg: 0 8px 40px rgba(0,0,0,0.15)
+--transition: 0.3s cubic-bezier(0.4,0,0.2,1)
+```
+
+## WHEN YOU ARE UNSURE
+- Check this .cursorrules file first
+- If endpoint not listed above, ask before creating new ones
+- If a library not in requirements.txt is needed, ask first
+- Never assume what the UI should look like — follow the screen descriptions above
+- Never change the folder structure without asking
+
+## ERROR MESSAGES TO USE (Consistent UX)
+```
+camera denied   → "Camera access blocked. Go to browser Settings → allow camera → refresh"
+no food found   → "No food detected. Move closer and ensure good lighting"
+api timeout     → "AI is taking too long. Please try again"
+auth expired    → "Session expired. Please login again"
+network error   → "No internet connection. Check your WiFi"
+scan failed     → "Scan failed: [actual error]. Try uploading a photo instead"
+```
+
+## REQUIREMENTS.TXT (Exact Versions — Never Change Without Asking)
+```
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+sqlalchemy==2.0.36
+python-dotenv==1.0.1
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+openai==1.51.0
+pydantic==2.9.2
+python-multipart==0.0.12
+aiofiles==24.1.0
+```

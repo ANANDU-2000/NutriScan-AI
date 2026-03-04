@@ -1,0 +1,28 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Database
+*.db
+*.sqlite3
+
+# Python
+__pycache__/
+.venv/
+venv/
+Lib/
+Scripts/
+*.pyc
+
+# Local git backup (converted from submodule)
+.git.bak/
+**/.git.bak/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
