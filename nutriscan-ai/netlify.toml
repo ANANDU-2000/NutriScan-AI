@@ -1,4 +1,4 @@
 # Netlify config — NutriScan AI frontend
 [build]
-  publish = "frontend"
+  publish = "nutriscan-ai/frontend"
   command = ""
