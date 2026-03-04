@@ -1668,7 +1668,7 @@
     const API_BASE = (function() {
       const h = (typeof location !== 'undefined' && location.hostname) || '';
       if (h === 'localhost' || h === '127.0.0.1') return 'http://127.0.0.1:8002';
-      return (typeof window !== 'undefined' && window.__API_BASE__) || 'https://nutriscan-ai.onrender.com';
+      return (typeof window !== 'undefined' && window.__API_BASE__) || 'https://nutriscan-ai-tfv4.onrender.com';
     })();
     let authToken = null;
     let currentUser = null;

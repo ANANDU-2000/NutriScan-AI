@@ -57,11 +57,7 @@ Step-by-step guide to deploy backend (Render) and frontend (Vercel) for free.
 
 ## Step 3: Update Frontend API URL
 
-If your Render URL is **not** `https://nutriscan-ai.onrender.com`, update the frontend:
-
-1. Open `frontend/index.html`
-2. Find: `return ... 'https://nutriscan-ai.onrender.com'`
-3. Replace with your actual Render URL (e.g. `https://nutriscan-ai-abc123.onrender.com`)
+Backend URL: `https://nutriscan-ai-tfv4.onrender.com` (already set in `frontend/index.html`)
 
 ---
 
