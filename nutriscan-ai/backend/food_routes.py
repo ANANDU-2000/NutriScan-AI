@@ -35,6 +35,11 @@ async def scan_food(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Image data is required",
         )
+    if len(request.image_base64) < 500:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Image too small or corrupted. Try a clearer photo.",
+        )
     # Enforce per-user daily scan limit (50 scans/day) — check before scan
     today = date.today()
     scan_log = (

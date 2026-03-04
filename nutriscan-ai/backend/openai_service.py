@@ -127,7 +127,7 @@ USER_MESSAGE_SCAN_RETRY = """This image may contain food. List EVERY food item y
 
 async def scan_food_image(image_base64: str) -> dict:
     if not image_base64 or not image_base64.strip():
-        return []
+        return {"items": [], "calorie_range_min": 0.0, "calorie_range_max": 0.0, "confidence": 0.0, "questions_for_user": []}
     try:
         client = _get_client()
         url = f"data:image/jpeg;base64,{image_base64}"
@@ -204,17 +204,19 @@ async def scan_food_image(image_base64: str) -> dict:
         except ValidationError:
             raise HTTPException(status_code=422, detail="Could not parse AI response from AI model")
 
-        # Sanity checks: clamp obviously impossible values
+        # Sanity checks: clamp impossible values, filter invalid items
         clean_items: list[dict[str, Any]] = []
         for item in parsed.items:
-            calories = max(0.0, min(2000.0, float(item.calories)))
-            protein_g = max(0.0, min(100.0, float(item.protein_g)))
-            carbs_g = max(0.0, float(item.carbs_g))
-            fat_g = max(0.0, float(item.fat_g))
+            food_name = (item.food_name or "").strip() or "Unknown food"
+            quantity_g = max(1.0, float(item.quantity_g or 0))
+            calories = max(0.0, min(2000.0, float(item.calories or 0)))
+            protein_g = max(0.0, min(100.0, float(item.protein_g or 0)))
+            carbs_g = max(0.0, float(item.carbs_g or 0))
+            fat_g = max(0.0, float(item.fat_g or 0))
             clean_items.append(
                 {
-                    "food_name": item.food_name,
-                    "quantity_g": float(item.quantity_g),
+                    "food_name": food_name,
+                    "quantity_g": quantity_g,
                     "calories": calories,
                     "protein_g": protein_g,
                     "carbs_g": carbs_g,

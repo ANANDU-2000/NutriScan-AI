@@ -3172,7 +3172,8 @@
       const video  = document.getElementById('camera-feed');
       const canvas = document.getElementById('capture-canvas');
       if (!stream || !video || !video.videoWidth) {
-        if (fromAuto) handleScanComplete(false);
+        isScanInProgress = false;
+        handleScanComplete(false);
         if (loading) loading.style.display = 'none';
         showToast('Camera not ready. Try again.', 'warning');
         return;
@@ -3200,6 +3201,11 @@
     }
 
     function handleFileUpload(event) {
+      if (isScanInProgress) {
+        showToast('Scan in progress. Please wait.', 'info');
+        event.target.value = '';
+        return;
+      }
       const file = event.target.files[0];
       if (!file) return;
       if (!file.type.startsWith('image/')) {
@@ -3218,6 +3224,7 @@
       if (loading) loading.style.display = 'flex';
       if (loadingText) loadingText.textContent = 'Processing...';
       if (elapsedEl) elapsedEl.textContent = file.size > 1024 * 1024 ? 'Reading large file...' : 'Preparing image...';
+      isScanInProgress = true;
       const reader = new FileReader();
       reader.onload = function(e) {
         try {
@@ -3238,17 +3245,21 @@
               base64 = c.toDataURL('image/jpeg', 0.78).split(',')[1];
               sendToScan(base64);
             };
-            img.onerror = function() { if (loading) loading.style.display = 'none'; showToast('Could not process image', 'error'); };
+            img.onerror = function() { isScanInProgress = false; handleScanComplete(false); if (loading) loading.style.display = 'none'; showToast('Could not process image', 'error'); };
             img.src = dataUrl;
           } else {
             sendToScan(base64);
           }
         } catch (err) {
+          isScanInProgress = false;
+          handleScanComplete(false);
           if (loading) loading.style.display = 'none';
           showToast('Could not read image: ' + err.message, 'error');
         }
       };
       reader.onerror = function() {
+        isScanInProgress = false;
+        handleScanComplete(false);
         if (loading) loading.style.display = 'none';
         showToast('Failed to read the image file. Try again.', 'error');
       };
@@ -3323,7 +3334,7 @@
         if (!autoScanMode || isScanInProgress || currentScreen !== 'scan') return;
         var video = document.getElementById('camera-feed');
         if (!video || !video.videoWidth || video.readyState < 2) {
-          scheduleAutoCapture();
+          autoScanIntervalId = setTimeout(scheduleAutoCapture, 1500);
           return;
         }
         captureFood(true);
@@ -3441,6 +3452,7 @@
         else if (err.message === 'AI_BUSY' || (err.message && err.message.includes('503'))) friendlyMsg = 'Our AI is busy. Please try again in a minute.';
         else if (err.message === 'LIMIT_REACHED' || (err.message && err.message.includes('429'))) friendlyMsg = 'Daily scan limit reached (50/day). Try again tomorrow.';
         else if (err.message && (err.message.indexOf('parse') >= 0 || err.message.indexOf('Could not parse') >= 0 || err.message.indexOf('422') >= 0)) friendlyMsg = 'AI had trouble reading the image. Try a clearer photo.';
+        else if (err.message && (err.message.includes('Image too small') || err.message.includes('corrupted'))) friendlyMsg = 'Image too small or corrupted. Try a clearer, larger photo.';
         else if (err.message && err.message.length > 10 && err.message.length < 120) friendlyMsg = err.message;
         else friendlyMsg = 'Couldn\'t analyse the image. Try a clearer photo or different angle.';
         if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') console.error('Scan error:', err);
