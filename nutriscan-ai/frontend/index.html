@@ -1106,6 +1106,10 @@
 
     <p id="voice-mic-state" style="text-align:center;font-size:13px;font-weight:600;
        color:rgba(255,255,255,0.5);min-height:20px;">Tap mic to speak</p>
+    <p style="text-align:center;margin-top:6px;">
+      <a href="#" id="voice-type-instead" onclick="stopListening();var i=document.getElementById('voice-text-input');if(i){i.focus();}return false;"
+         style="font-size:13px;color:var(--accent);text-decoration:underline;">Type instead</a>
+    </p>
 
     <div style="margin:16px 24px 0;">
       <div id="voice-transcript" style="background:rgba(255,255,255,0.1);
@@ -1356,6 +1360,13 @@
           Snack
         </button>
       </div>
+
+      <button id="auto-scan-toggle" onclick="toggleAutoScan()"
+              style="min-height:36px;padding:6px 12px;border-radius:var(--r-full);font-size:12px;
+                     font-weight:600;cursor:pointer;white-space:nowrap;border:1.5px solid rgba(255,255,255,0.35);
+                     background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.85);backdrop-filter:blur(6px);">
+        Manual
+      </button>
 
       <button onclick="flipCamera()"
               style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.15);
@@ -1783,7 +1794,7 @@
         }
       }
       if (name === 'scan') initCamera();
-      else stopCamera();
+      else { stopCamera(); stopAutoScan(); }
       if (name === 'dashboard') loadDashboard();
       if (name === 'log') loadFoodLog();
       if (name === 'settings') refreshSettingsProfile();
@@ -2080,6 +2091,7 @@
     let recognition  = null;
     let isListening  = false;
 
+    var voiceUnavailable = false;
     function showVoiceQuestion() {
       const q = VOICE_QUESTIONS[voiceIndex];
       const qEl = document.getElementById('voice-question-text');
@@ -2087,7 +2099,7 @@
       const stateEl = document.getElementById('voice-mic-state');
       if (qEl) qEl.textContent = q.text;
       if (tEl) tEl.innerHTML = '&nbsp;';
-      if (stateEl) stateEl.textContent = 'Tap mic to speak';
+      if (stateEl) stateEl.textContent = 'Listening...';
       updateProgressDots();
       updateSoFarSummary();
       renderVoiceInput(q);
@@ -2096,6 +2108,11 @@
         const u = new SpeechSynthesisUtterance(q.text);
         u.rate = 0.88; u.pitch = 1.05; u.volume = 1;
         window.speechSynthesis.speak(u);
+      }
+      if (!voiceUnavailable && (window.SpeechRecognition || window.webkitSpeechRecognition)) {
+        setTimeout(function() { startListening(); }, 500);
+      } else {
+        if (stateEl) stateEl.textContent = 'Tap mic to speak or type below';
       }
     }
 
@@ -2188,7 +2205,10 @@
     function startListening() {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SR) {
+        voiceUnavailable = true;
         showToast('Voice not supported in this browser. Type your answer.', 'warning');
+        const state = document.getElementById('voice-mic-state');
+        if (state) state.textContent = 'Voice unavailable. Use buttons or type below.';
         return;
       }
       if (recognition) {
@@ -2214,7 +2234,12 @@
           stopListening();
           processVoiceAnswer(transcript);
         };
-        recognition.onerror = () => { stopListening(); };
+        recognition.onerror = (e) => {
+          if (e.error === 'not-allowed' || e.error === 'permission-denied') voiceUnavailable = true;
+          stopListening();
+          const state = document.getElementById('voice-mic-state');
+          if (state && voiceUnavailable) state.textContent = 'Voice unavailable. Use buttons or type below.';
+        };
         recognition.onend   = () => { stopListening(); };
         recognition.start();
       }, 300);
@@ -2244,6 +2269,7 @@
     function startVoiceOnboarding() {
       voiceIndex = 0;
       voiceAnswers = {};
+      voiceUnavailable = false;
       const recovery = document.getElementById('voice-recovery');
       if (recovery) recovery.style.display = 'none';
       showVoiceQuestion();
@@ -3104,6 +3130,10 @@
           await video.play();
         }
         if (errEl) errEl.style.display = 'none';
+        if (autoScanMode && currentScreen === 'scan') {
+          autoScanRetries = 0;
+          setTimeout(function() { scheduleAutoCapture(); }, autoScanInitialDelayMs);
+        }
       } catch (err) {
         const msg = err.name === 'NotAllowedError'
           ? 'Camera blocked. Go to browser Settings → Site Permissions → Camera → Allow, then return here.'
@@ -3126,20 +3156,29 @@
       initCamera();
     }
 
-    async function captureFood() {
+    async function captureFood(fromAuto) {
+      if (isScanInProgress && !fromAuto) {
+        showToast('Scan in progress. Please wait.', 'info');
+        return;
+      }
+      isScanInProgress = true;
+      if (fromAuto) lastCaptureWasAuto = true;
       const loading = document.getElementById('scan-loading');
+      const loadingMsg = document.getElementById('scan-loading-msg');
       if (loading) loading.style.display = 'flex';
+      if (loadingMsg && fromAuto) loadingMsg.textContent = 'Scanning...';
       if (navigator.vibrate) navigator.vibrate(40);
 
       const video  = document.getElementById('camera-feed');
       const canvas = document.getElementById('capture-canvas');
       if (!stream || !video || !video.videoWidth) {
+        if (fromAuto) handleScanComplete(false);
         if (loading) loading.style.display = 'none';
         showToast('Camera not ready. Try again.', 'warning');
         return;
       }
 
-      const maxDim = 1024;
+      const maxDim = 1280;
       const scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight));
       canvas.width  = Math.round(video.videoWidth  * scale);
       canvas.height = Math.round(video.videoHeight * scale);
@@ -3153,7 +3192,10 @@
         setTimeout(() => flash.remove(), 200);
       });
 
-      const base64 = canvas.toDataURL('image/jpeg', 0.78).replace(/^data:image\/jpeg;base64,/, '');
+      var quality = 0.82;
+      var w = canvas.width, h = canvas.height;
+      if (w * h > 1200 * 900) quality = 0.75;
+      const base64 = canvas.toDataURL('image/jpeg', quality).replace(/^data:image\/jpeg;base64,/, '');
       await sendToScan(base64);
     }
 
@@ -3180,11 +3222,27 @@
       reader.onload = function(e) {
         try {
           const dataUrl = e.target.result;
-          const base64 = dataUrl.split(',')[1];
+          var base64 = dataUrl.split(',')[1];
           if (!base64 || base64.length < 100) {
             throw new Error('Image too small or corrupted');
           }
-          sendToScan(base64);
+          if (base64.length > 800000) {
+            var img = new Image();
+            img.onload = function() {
+              var c = document.getElementById('capture-canvas') || document.createElement('canvas');
+              var maxDim = 1280;
+              var s = Math.min(1, maxDim / Math.max(img.width, img.height));
+              c.width = Math.round(img.width * s);
+              c.height = Math.round(img.height * s);
+              c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+              base64 = c.toDataURL('image/jpeg', 0.78).split(',')[1];
+              sendToScan(base64);
+            };
+            img.onerror = function() { if (loading) loading.style.display = 'none'; showToast('Could not process image', 'error'); };
+            img.src = dataUrl;
+          } else {
+            sendToScan(base64);
+          }
         } catch (err) {
           if (loading) loading.style.display = 'none';
           showToast('Could not read image: ' + err.message, 'error');
@@ -3232,8 +3290,69 @@
 
     var scanCancelled = false;
     var scanElapsedInterval = null;
+    var autoScanMode = false;
+    var autoScanIntervalId = null;
+    var autoScanRetries = 0;
+    var autoScanMaxRetries = 5;
+    var autoScanIntervalMs = 5500;
+    var autoScanInitialDelayMs = 3500;
+    var isScanInProgress = false;
+    var lastCaptureWasAuto = false;
+
+    function toggleAutoScan() {
+      autoScanMode = !autoScanMode;
+      var btn = document.getElementById('auto-scan-toggle');
+      if (btn) btn.textContent = autoScanMode ? 'Auto' : 'Manual';
+      if (autoScanMode && currentScreen === 'scan' && stream) {
+        showToast('Hold phone steady, point at food. Auto-scan every 5 sec.', 'info');
+        autoScanRetries = 0;
+        setTimeout(function() { scheduleAutoCapture(); }, autoScanInitialDelayMs);
+      } else {
+        stopAutoScan();
+      }
+    }
+
+    function stopAutoScan() {
+      if (autoScanIntervalId) { clearTimeout(autoScanIntervalId); autoScanIntervalId = null; }
+    }
+
+    function scheduleAutoCapture() {
+      if (!autoScanMode || isScanInProgress || autoScanRetries >= autoScanMaxRetries || currentScreen !== 'scan') return;
+      autoScanIntervalId = setTimeout(function() {
+        autoScanIntervalId = null;
+        if (!autoScanMode || isScanInProgress || currentScreen !== 'scan') return;
+        var video = document.getElementById('camera-feed');
+        if (!video || !video.videoWidth || video.readyState < 2) {
+          scheduleAutoCapture();
+          return;
+        }
+        captureFood(true);
+      }, autoScanIntervalMs);
+    }
+
+    function handleScanComplete(success) {
+      isScanInProgress = false;
+      if (lastCaptureWasAuto) {
+        lastCaptureWasAuto = false;
+        if (success) {
+          autoScanRetries = 0;
+          stopAutoScan();
+        } else if (!scanCancelled) {
+          autoScanRetries++;
+          if (autoScanRetries < autoScanMaxRetries && autoScanMode) {
+            scheduleAutoCapture();
+            if (autoScanRetries >= 2) showToast('Hold steady, point at food. Retry ' + autoScanRetries + '/' + autoScanMaxRetries, 'info');
+          } else {
+            stopAutoScan();
+            if (autoScanMode) showToast('Move closer, hold steady, or tap Capture manually.', 'info');
+          }
+        } else stopAutoScan();
+      }
+    }
+
     function cancelScan() {
       scanCancelled = true;
+      stopAutoScan();
       if (scanElapsedInterval) { clearInterval(scanElapsedInterval); scanElapsedInterval = null; }
       var loading = document.getElementById('scan-loading');
       var errorPanel = document.getElementById('scan-error-panel');
@@ -3248,6 +3367,8 @@
       if (!currentUser) {
         var loading = document.getElementById('scan-loading');
         if (loading) loading.style.display = 'none';
+        isScanInProgress = false;
+        handleScanComplete(false);
         showToast('Please login first', 'error');
         showScreen('login');
         return;
@@ -3275,14 +3396,20 @@
           image_base64: base64,
           meal_type: selectedMealType || 'lunch',
           user_id: currentUser.id
-        }, 60000);
+        }, 120000);
         if (scanElapsedInterval) { clearInterval(scanElapsedInterval); scanElapsedInterval = null; }
-        if (scanCancelled) return;
+        if (scanCancelled) { handleScanComplete(false); return; }
         if (loading) loading.style.display = 'none';
         if (!result || !result.items || result.items.length === 0) {
-          showToast('No food detected. Try better lighting or move closer.', 'warning');
+          if (loading) loading.style.display = 'none';
+          handleScanComplete(false);
+          var tip = lastCaptureWasAuto
+            ? 'No food detected. Hold phone steady, move closer to the plate, ensure food fills the frame, then try again or tap Capture manually.'
+            : 'No food detected. Try: better lighting, move closer, ensure food is clearly in frame, avoid blur.';
+          showScanErrorPanel(tip, base64);
           return;
         }
+        handleScanComplete(true);
         lastScanResult = result;
         scanItemFactors = {};
         (result.items || []).forEach(function(item) {
@@ -3291,18 +3418,33 @@
         showScanResults(result);
       } catch (err) {
         if (scanElapsedInterval) { clearInterval(scanElapsedInterval); scanElapsedInterval = null; }
-        if (scanCancelled) return;
-        if (attempt < 2 && (err.message === 'TIMEOUT' || err.message === 'NETWORK' || (err.message && err.message.includes('503')))) {
-          if (loadingText) loadingText.textContent = 'Retrying...';
+        if (scanCancelled) { handleScanComplete(false); return; }
+        var retryable = err.message === 'TIMEOUT' || err.message === 'NETWORK' || (err.message && (err.message.includes('503') || err.message.includes('parse') || err.message.includes('422')));
+        if (attempt < 3 && retryable) {
+          if (loadingText) loadingText.textContent = 'Retrying... (' + (attempt + 1) + '/3)';
           return sendToScan(base64, attempt + 1);
         }
         if (loading) loading.style.display = 'none';
         var friendlyMsg = '';
-        if (err.message === 'TIMEOUT') friendlyMsg = 'Taking longer than usual. Check your connection and try again.';
-        else if (err.message === 'NETWORK' || (err.name === 'TypeError' && err.message && err.message.includes('fetch'))) friendlyMsg = 'No connection. Check Wi-Fi or mobile data.';
+        if (err.message === 'SESSION_EXPIRED') {
+          handleScanComplete(false);
+          authToken = null; currentUser = null; clearSession();
+          showToast('Session expired. Please login again.', 'error');
+          showScreen('login');
+          return;
+        }
+        if (err.message === 'TIMEOUT') friendlyMsg = 'Server may be waking up (free tier) or slow connection. Wait 30 seconds and try again.';
+        else if (err.message === 'NETWORK' || (err.name === 'TypeError' && err.message && err.message.includes('fetch'))) {
+          var isProd = location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
+          friendlyMsg = isProd ? 'Connection blocked. Check that the app is using the correct backend URL.' : 'No connection. Check Wi-Fi or mobile data.';
+        }
         else if (err.message === 'AI_BUSY' || (err.message && err.message.includes('503'))) friendlyMsg = 'Our AI is busy. Please try again in a minute.';
         else if (err.message === 'LIMIT_REACHED' || (err.message && err.message.includes('429'))) friendlyMsg = 'Daily scan limit reached (50/day). Try again tomorrow.';
+        else if (err.message && (err.message.indexOf('parse') >= 0 || err.message.indexOf('Could not parse') >= 0 || err.message.indexOf('422') >= 0)) friendlyMsg = 'AI had trouble reading the image. Try a clearer photo.';
+        else if (err.message && err.message.length > 10 && err.message.length < 120) friendlyMsg = err.message;
         else friendlyMsg = 'Couldn\'t analyse the image. Try a clearer photo or different angle.';
+        if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') console.error('Scan error:', err);
+        handleScanComplete(false);
         showScanErrorPanel(friendlyMsg, base64);
       }
     }
@@ -3312,7 +3454,7 @@
       lastScanBase64ForRetry = base64ForRetry || null;
       var panel = document.getElementById('scan-error-panel');
       if (!panel) return;
-      panel.innerHTML = '<div style="text-align:center;padding:24px 20px;"><p style="color:rgba(255,255,255,0.9);font-size:16px;margin-bottom:16px;line-height:1.5;">' + message + '</p><button onclick="if(lastScanBase64ForRetry){sendToScan(lastScanBase64ForRetry);document.getElementById(\'scan-error-panel\').style.display=\'none\';}" class="btn btn-primary" style="max-width:200px;">Try Again</button><button onclick="document.getElementById(\'scan-error-panel\').style.display=\'none\';lastScanBase64ForRetry=null;" class="btn btn-ghost" style="margin-top:12px;color:rgba(255,255,255,0.8);">Cancel</button></div>';
+      panel.innerHTML = '<div style="text-align:center;padding:24px 20px;"><p style="color:rgba(255,255,255,0.9);font-size:16px;margin-bottom:16px;line-height:1.5;">' + message + '</p><div style="display:flex;flex-direction:column;gap:10px;align-items:center;"><button onclick="if(lastScanBase64ForRetry){sendToScan(lastScanBase64ForRetry);document.getElementById(\'scan-error-panel\').style.display=\'none\';}" class="btn btn-primary" style="max-width:200px;">Try Again</button><button onclick="document.getElementById(\'scan-error-panel\').style.display=\'none\';lastScanBase64ForRetry=null;openManualEntry(selectedMealType||\'lunch\');" class="btn btn-outline" style="max-width:200px;background:rgba(255,255,255,0.15);color:#fff;border-color:rgba(255,255,255,0.4);">Add manually instead</button><button onclick="document.getElementById(\'scan-error-panel\').style.display=\'none\';lastScanBase64ForRetry=null;" class="btn btn-ghost" style="color:rgba(255,255,255,0.8);">Cancel</button></div></div>';
       panel.style.display = 'flex';
     }
 

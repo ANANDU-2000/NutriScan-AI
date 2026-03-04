@@ -10,31 +10,28 @@ from pydantic import BaseModel, ValidationError
 
 load_dotenv()
 
-SYSTEM_PROMPT_SCAN = """You are an expert nutritionist and food analyst.
-When shown a food image, identify every food item visible on the plate or in the bowl.
-You MUST return ONLY valid JSON — no explanation, no markdown, no code fences.
-Use USDA standard nutrition values for estimates.
-Be realistic: most home-cooked Indian meals are 150–450g total. No single item may exceed 2000 kcal.
-Use short, descriptive food_name values suitable for UI display (e.g. "Kerala parotta (2 pcs)", "steamed white rice").
-When unsure, give conservative estimates. Be honest about uncertainty."""
+SYSTEM_PROMPT_SCAN = """You are an expert nutritionist and food analyst. Your job is to identify food in images.
+
+CRITICAL RULES:
+1. Return ONLY valid JSON. No explanation, no markdown, no code fences, no text before or after.
+2. If you see ANY food at all — even one piece, one item, partial plate, snack, fruit, drink — you MUST return at least one item. NEVER return empty items[] unless the image is completely blank, pure black, or shows zero food.
+3. Single item = return 1 item. One banana, one idli, one slice of bread, one apple — all valid. One piece of any food = return it.
+4. Support ALL food types: Indian (Kerala, North Indian, South Indian), Western, snacks, fruits, vegetables, drinks, packaged food, street food, restaurant meals, home-cooked — anything edible.
+5. Use USDA nutrition values. Be realistic: most portions 50–500g. No single item > 2000 kcal.
+6. Use short food_name values (e.g. "rice (1 cup)", "banana (1 medium)", "parotta (2 pcs)").
+7. When unsure or image is blurry, STILL return your best guess with conservative estimates. Prefer returning items over empty.
+
+Common Kerala/South Indian: puttu, idli, dosa, appam, rice, sambar, rasam, avial, fish curry, chicken curry, parotta, kadala curry, payasam, banana chips, coconut chutney."""
 
 USER_MESSAGE_SCAN = """Analyze this food image.
 
 Return a JSON object with exactly these keys:
-- items: an array where each element has:
-  - food_name (string — specific, e.g. "Kerala parotta (2 pcs)" or "steamed white rice")
-  - quantity_g (number — realistic weight in grams)
-  - calories (number — total kcal for that quantity, max 2000 per item)
-  - protein_g (number)
-  - carbs_g (number)
-  - fat_g (number)
-- calorie_range_min: number — estimated minimum total kcal for the whole plate
-- calorie_range_max: number — estimated maximum total kcal for the whole plate
-- confidence: number between 0 and 1 (e.g. 0.72) for how confident you are overall
-- questions_for_user: array of short strings with 1–3 questions that would most reduce uncertainty
+- items: array of objects, each with: food_name, quantity_g, calories, protein_g, carbs_g, fat_g
+- calorie_range_min, calorie_range_max: numbers
+- confidence: 0–1
+- questions_for_user: array of short strings
 
-If no food is visible, return:
-{ "items": [], "calorie_range_min": 0, "calorie_range_max": 0, "confidence": 0.0, "questions_for_user": [] }
+RULE: If you see ANY food (even one piece, one item, any type), return at least one item. Empty items[] ONLY when image shows zero food (blank, black, or no food visible).
 
 Return ONLY the JSON object. No other text."""
 
@@ -68,6 +65,46 @@ def _strip_json_fences(raw: str) -> str:
     return raw.strip()
 
 
+def _extract_json(raw: str) -> dict | list | None:
+    """Extract JSON from GPT response even when wrapped in extra text."""
+    raw = _strip_json_fences(raw.strip())
+    # Direct parse
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    # GPT sometimes returns "I cannot see... Here is the JSON: {...}" — find first { or [
+    start_obj = raw.find("{")
+    start_arr = raw.find("[")
+    if start_obj >= 0 and (start_arr < 0 or start_obj < start_arr):
+        # Find matching closing brace
+        depth = 0
+        for i in range(start_obj, len(raw)):
+            if raw[i] == "{":
+                depth += 1
+            elif raw[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(raw[start_obj : i + 1])
+                    except json.JSONDecodeError:
+                        break
+    if start_arr >= 0:
+        depth = 0
+        for i in range(start_arr, len(raw)):
+            if raw[i] == "[":
+                depth += 1
+            elif raw[i] == "]":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        arr = json.loads(raw[start_arr : i + 1])
+                        return {"items": arr} if isinstance(arr, list) else arr
+                    except json.JSONDecodeError:
+                        break
+    return None
+
+
 class FoodItemAI(BaseModel):
     food_name: str
     quantity_g: float
@@ -85,6 +122,9 @@ class FoodScanAIOutput(BaseModel):
     questions_for_user: List[str] = []
 
 
+USER_MESSAGE_SCAN_RETRY = """This image may contain food. List EVERY food item you can see — even one piece, one item, snack, fruit, or drink. If you see anything edible, return at least one item with your best estimate. Return ONLY valid JSON with items, calorie_range_min, calorie_range_max, confidence, questions_for_user."""
+
+
 async def scan_food_image(image_base64: str) -> dict:
     if not image_base64 or not image_base64.strip():
         return []
@@ -93,12 +133,12 @@ async def scan_food_image(image_base64: str) -> dict:
         url = f"data:image/jpeg;base64,{image_base64}"
         last_error: Exception | None = None
         response = None
-        for attempt in range(2):
+        for attempt in range(3):
             try:
                 response = await client.chat.completions.create(
                     model="gpt-4o",
-                    temperature=0.3,
-                    max_tokens=1000,
+                    temperature=0.2,
+                    max_tokens=1200,
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPT_SCAN},
                         {
@@ -113,7 +153,7 @@ async def scan_food_image(image_base64: str) -> dict:
                 break
             except APIError as e:
                 last_error = e
-                if attempt == 0:
+                if attempt < 2:
                     continue
                 raise
         if response is None and last_error is not None:
@@ -121,8 +161,37 @@ async def scan_food_image(image_base64: str) -> dict:
         raw = response.choices[0].message.content
         if not raw:
             return {"items": [], "calorie_range_min": 0.0, "calorie_range_max": 0.0, "confidence": 0.0, "questions_for_user": []}
-        raw = _strip_json_fences(raw.strip())
-        data = json.loads(raw)
+        data = _extract_json(raw)
+        if data is None:
+            raise HTTPException(status_code=422, detail="Could not parse AI response from AI model")
+        # If first attempt returned empty items, retry once with stronger prompt (image may have food)
+        items_first = (data.get("items") if isinstance(data, dict) else []) or []
+        if not items_first and isinstance(data, dict):
+            try:
+                retry_resp = await client.chat.completions.create(
+                    model="gpt-4o",
+                    temperature=0.3,
+                    max_tokens=1200,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT_SCAN},
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": USER_MESSAGE_SCAN_RETRY},
+                                {"type": "image_url", "image_url": {"url": url, "detail": "high"}},
+                            ],
+                        },
+                    ],
+                )
+                retry_raw = retry_resp.choices[0].message.content
+                if retry_raw:
+                    retry_data = _extract_json(retry_raw)
+                    if retry_data and isinstance(retry_data, dict):
+                        retry_items = retry_data.get("items") or []
+                        if retry_items:
+                            data = retry_data
+            except Exception:
+                pass
         # Backwards compatibility: if the model returned a bare array, wrap it
         if isinstance(data, list):
             wrapped: dict[str, Any] = {"items": data}

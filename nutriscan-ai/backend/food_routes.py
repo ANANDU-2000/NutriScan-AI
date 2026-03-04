@@ -35,24 +35,19 @@ async def scan_food(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Image data is required",
         )
-    # Enforce per-user daily scan limit (50 scans/day)
+    # Enforce per-user daily scan limit (50 scans/day) — check before scan
     today = date.today()
     scan_log = (
         db.query(ScanLog)
         .filter(ScanLog.user_id == request.user_id, ScanLog.scan_date == today)
         .first()
     )
-    if scan_log:
-        if scan_log.scan_count >= 50:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Daily scan limit reached (50 scans/day). Try again tomorrow.",
-            )
-        scan_log.scan_count += 1
-    else:
-        scan_log = ScanLog(user_id=request.user_id, scan_date=today, scan_count=1)
-        db.add(scan_log)
-    db.commit()
+    if scan_log and scan_log.scan_count >= 50:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Daily scan limit reached (50 scans/day). Try again tomorrow.",
+        )
+    # Run scan first; only count toward limit on success
     scan_result = await scan_food_image(request.image_base64)
     items = scan_result.get("items") or []
     if not items:
@@ -67,6 +62,12 @@ async def scan_food(
             confidence=0.0,
             questions_for_user=[],
         )
+    # Count this scan toward daily limit only on success
+    if scan_log:
+        scan_log.scan_count += 1
+    else:
+        scan_log = ScanLog(user_id=request.user_id, scan_date=today, scan_count=1)
+        db.add(scan_log)
     total_calories = 0.0
     total_protein = 0.0
     total_carbs = 0.0
