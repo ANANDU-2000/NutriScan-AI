@@ -35,7 +35,7 @@ Step-by-step guide to deploy backend (Render) and frontend (Vercel) for free.
 | **Name** | NutriScan-AI |
 | **Region** | Singapore |
 | **Branch** | main |
-| **Root Directory** | `backend` |
+| **Root Directory** | `nutriscan-ai/backend` |
 | **Runtime** | Python 3 |
 | **Build Command** | `pip install -r requirements.txt` |
 | **Start Command** | `uvicorn main:app --host 0.0.0.0 --port $PORT` |

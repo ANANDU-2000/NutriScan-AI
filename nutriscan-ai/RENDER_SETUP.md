@@ -20,7 +20,7 @@
 
 1. Render Dashboard → **New** → **Web Service**
 2. Connect **NutriScan-AI** repo
-3. **Root Directory**: `backend`
+3. **Root Directory**: `nutriscan-ai/backend` (repo has nutriscan-ai/ folder)
 4. **Build**: `pip install -r requirements.txt`
 5. **Start**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
 6. **Instance**: Free
