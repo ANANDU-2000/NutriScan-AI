@@ -10,7 +10,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User
+from models import AdminUser, User
 from schemas import TokenWithUser, UserCreate, UserLogin, UserResponse
 
 load_dotenv()
@@ -115,6 +115,19 @@ def get_current_user(
             detail="Could not validate credentials",
         )
     return user
+
+
+def get_admin_user(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    admin = db.query(AdminUser).filter(AdminUser.user_id == current_user.id).first()
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user
 
 
 router = APIRouter()

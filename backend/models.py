@@ -102,3 +102,50 @@ class WeightLog(Base):
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     weight_kg = Column(Float, nullable=False)
     logged_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ReminderSchedule(Base):
+    __tablename__ = "reminder_schedules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    type = Column(String(30), nullable=False)  # breakfast, lunch, dinner, water, goal_alert
+    enabled = Column(Boolean, default=True, nullable=False)
+    scheduled_time = Column(String(8), nullable=True)  # "HH:MM" in 24h format
+    timezone = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    type = Column(String(50), nullable=True)
+    title = Column(String(200), nullable=False)
+    body = Column(Text, nullable=False)
+    payload = Column(Text, nullable=True)  # JSON payload
+    sent_at = Column(DateTime, default=datetime.utcnow)
+    read_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    endpoint = Column(Text, nullable=False, unique=True)
+    p256dh = Column(String(255), nullable=False)
+    auth = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AdminUser(Base):
+    __tablename__ = "admin_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    is_super = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

@@ -15,6 +15,9 @@ Lib/
 Scripts/
 *.pyc
 
+# Duplicate backend (canonical is at repo root /backend)
+nutriscan-ai/backend/
+
 # Local git backup (converted from submodule)
 .git.bak/
 **/.git.bak/

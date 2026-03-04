@@ -919,9 +919,9 @@
       </div>
 
       <div class="landing-pills">
-        <span class="landing-pill">📷 Camera scan</span>
-        <span class="landing-pill">🤖 GPT-4o</span>
-        <span class="landing-pill">🎤 Voice</span>
+        <span class="landing-pill">Scan meals in seconds</span>
+        <span class="landing-pill">Track calories & macros</span>
+        <span class="landing-pill">Get simple daily tips</span>
       </div>
 
       <div class="landing-cta">
@@ -1542,17 +1542,16 @@
 
   <div id="screen-recommend" class="screen">
     <div style="padding:20px 20px 12px;">
-      <h2 style="font-size:22px; font-weight:800; color:var(--text);">Nutrition Tips ✨</h2>
-      <p style="font-size:14px; color:var(--text-secondary);">Based on your profile and today's meals</p>
+      <h2 style="font-size:22px; font-weight:800; color:var(--text);">Your Tips</h2>
+      <p id="rec-subtitle" style="font-size:14px; color:var(--text-secondary);">Personalized for your day</p>
     </div>
     <div id="rec-initial" style="padding:0 16px; text-align:center; margin-top:32px;">
-      <p style="font-size:48px; margin-bottom:16px;">🧠</p>
-      <button id="rec-btn" onclick="loadRecommendations()" class="btn btn-primary" style="max-width:300px;">Get My Recommendations</button>
-      <p style="font-size:13px; color:var(--text-muted); margin-top:10px;">Analyzes your profile + today's meals</p>
+      <button id="rec-btn" onclick="loadRecommendations()" class="btn btn-primary" style="max-width:300px;">Get Tips</button>
+      <p style="font-size:13px; color:var(--text-muted); margin-top:10px;">Quick suggestions for your next meal</p>
     </div>
     <div id="rec-loading" style="display:none; padding:40px 16px; text-align:center;">
       <div style="width:48px; height:48px; border:3px solid var(--accent-soft); border-top-color:var(--primary); border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto 16px;"></div>
-      <p id="rec-loading-text" style="font-size:15px; color:var(--text-secondary);">Analysing your nutrition...</p>
+      <p id="rec-loading-text" style="font-size:15px; color:var(--text-secondary);">Putting together your tips...</p>
     </div>
     <div id="rec-results" style="display:none; padding:0 16px;"></div>
   </div>
@@ -1681,6 +1680,7 @@
       if (h === 'localhost' || h === '127.0.0.1') return 'http://127.0.0.1:8002';
       return (typeof window !== 'undefined' && window.__API_BASE__) || 'https://nutriscan-ai-tfv4.onrender.com';
     })();
+    const VAPID_PUBLIC_KEY = (typeof window !== 'undefined' && window.__VAPID_PUBLIC_KEY__) || null;
     let authToken = null;
     let currentUser = null;
 
@@ -1839,6 +1839,43 @@
       toast.textContent = message;
       document.body.appendChild(toast);
       setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = '0.3s'; setTimeout(() => toast.remove(), 300); }, 3000);
+    }
+
+    async function ensurePushSubscription() {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+      if (!VAPID_PUBLIC_KEY) return;
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        const existing = await registration.pushManager.getSubscription();
+        if (existing) return;
+        const convertedKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+        const sub = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: convertedKey
+        });
+        const info = sub.toJSON();
+        if (info && info.endpoint && info.keys && info.keys.p256dh && info.keys.auth) {
+          await apiCall('/push/subscribe', 'POST', {
+            endpoint: info.endpoint,
+            p256dh: info.keys.p256dh,
+            auth: info.keys.auth
+          });
+        }
+      } catch (e) {
+        console.log('Push subscribe failed', e);
+      }
+    }
+
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+      return outputArray;
     }
 
     function showLoading(msg) {
@@ -2996,10 +3033,10 @@
           '<div class="card" style="margin:12px 16px 0;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;"><p style="font-size:15px; font-weight:700; color:var(--text);">Today\'s Score</p><span id="score-badge" style="font-size:22px; font-weight:800; color:var(--primary);">--</span></div><div id="score-breakdown"></div><div style="height:8px; background:var(--border); border-radius:4px; overflow:hidden; margin-top:10px;"><div id="score-bar" style="height:100%; width:0%; border-radius:4px; background:linear-gradient(90deg,#4CAF50,#1A6B3C); transition:width 1s ease;"></div></div><p id="score-label" style="font-size:12px; color:var(--text-secondary); text-align:center; margin-top:6px;"></p></div>' +
           '<div class="card" style="margin:12px 16px 0; padding:16px;"><p style="font-size:11px; font-weight:800; color:var(--text-secondary); letter-spacing:0.06em; margin-bottom:10px;">BUDGET REMAINING</p><div style="display:flex; align-items:baseline; gap:8px; margin-bottom:6px;"><span id="budget-number" style="font-size:40px; font-weight:800; color:var(--primary); letter-spacing:-1px; transition:color 0.4s;">--</span><span style="font-size:16px; color:var(--text-secondary);">kcal left</span></div><p id="budget-food-equiv" style="font-size:14px; color:var(--text-secondary); line-height:1.5; margin-bottom:0;"></p></div>' +
           '<button onclick="showWhatCanIEat(Math.max(0, (window._dashStats&&window._dashStats.daily_goal?window._dashStats.daily_goal:2000) - (window._dashStats&&window._dashStats.consumed_today?window._dashStats.consumed_today:0)))" id="what-can-eat-btn" style="margin:10px 16px 0; background:var(--accent-soft); color:var(--primary); border:2px solid #C8E6C9; border-radius:var(--r-full); min-height:48px; font-size:15px; font-weight:700; cursor:pointer; width:calc(100% - 32px);">What can I eat now? →</button>' +
-          '<div id="today-focus-card" class="card" style="margin:12px 16px 0; border-left:4px solid var(--primary); padding:14px 18px;"><p style="font-size:12px; font-weight:700; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em;">🎯 Today Focus</p><div id="today-focus-content" style="margin:0;"></div></div>' +
+      '<div id="today-focus-card" class="card" style="margin:12px 16px 0; border-left:4px solid var(--primary); padding:14px 18px;"><p style="font-size:12px; font-weight:700; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em;">Today\'s Focus</p><div id="today-focus-content" style="margin:0;"></div></div>' +
           '<div class="card" style="margin:12px 16px 0; padding:12px 16px;"><p style="font-size:11px; color:var(--text-muted); margin-bottom:10px; text-transform:uppercase;">Macros</p><div id="macro-protein-row"></div><div id="macro-carbs-row"></div><div id="macro-fat-row"></div></div>' +
-          '<div class="card" style="margin:12px 16px 0;"><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;"><div><p style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">💧 Water</p><p id="water-text" style="font-size:13px; color:var(--text-secondary); margin-top:2px;"></p></div><button onclick="addWaterGlass()" style="background:var(--accent-soft); color:var(--primary); border:none; border-radius:20px; padding:8px 14px; font-size:13px; font-weight:700; cursor:pointer; min-height:36px; white-space:nowrap;">+250ml</button></div><div id="water-drops" style="display:flex; gap:6px; justify-content:space-between;"></div></div>' +
-          '<div style="margin:12px 16px 0;"><button id="contextual-log-btn" class="btn btn-primary" style="width:100%; min-height:56px; font-size:17px; font-weight:700; margin-bottom:10px;" onclick="handleContextualLog()"></button><div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin:12px 16px 0;"><button onclick="navTo(\'scan\')" style="background:var(--surface); border:1.5px solid var(--border); border-radius:16px; padding:16px 8px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; min-height:80px; box-shadow:0 1px 4px rgba(0,0,0,0.06); -webkit-tap-highlight-color:transparent;" ontouchstart="this.style.transform=\'scale(0.93)\'" ontouchend="this.style.transform=\'scale(1)\'"><span style="font-size:26px;">📷</span><span style="font-size:12px; font-weight:700; color:var(--text);">Scan Food</span></button><button onclick="navTo(\'recommend\')" style="background:var(--surface); border:1.5px solid var(--border); border-radius:16px; padding:16px 8px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; min-height:80px; box-shadow:0 1px 4px rgba(0,0,0,0.06); -webkit-tap-highlight-color:transparent;" ontouchstart="this.style.transform=\'scale(0.93)\'" ontouchend="this.style.transform=\'scale(1)\'"><span style="font-size:26px;">✨</span><span style="font-size:12px; font-weight:700; color:var(--text);">AI Tips</span></button><button onclick="navTo(\'log\')" style="background:var(--surface); border:1.5px solid var(--border); border-radius:16px; padding:16px 8px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; min-height:80px; box-shadow:0 1px 4px rgba(0,0,0,0.06); -webkit-tap-highlight-color:transparent;" ontouchstart="this.style.transform=\'scale(0.93)\'" ontouchend="this.style.transform=\'scale(1)\'"><span style="font-size:26px;">📋</span><span style="font-size:12px; font-weight:700; color:var(--text);">View Log</span></button></div></div>' +
+          '<div class="card" style="margin:12px 16px 0;"><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;"><div><p style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Water</p><p id="water-text" style="font-size:13px; color:var(--text-secondary); margin-top:2px;"></p></div><button onclick="addWaterGlass()" style="background:var(--accent-soft); color:var(--primary); border:none; border-radius:20px; padding:8px 14px; font-size:13px; font-weight:700; cursor:pointer; min-height:36px; white-space:nowrap;">+250ml</button></div><div id="water-drops" style="display:flex; gap:6px; justify-content:space-between;"></div></div>' +
+          '<div style="margin:12px 16px 0;"><button id="contextual-log-btn" class="btn btn-primary" style="width:100%; min-height:56px; font-size:17px; font-weight:700; margin-bottom:10px;" onclick="handleContextualLog()"></button><div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin:12px 16px 0;"><button onclick="navTo(\'scan\')" style="background:var(--surface); border:1.5px solid var(--border); border-radius:16px; padding:16px 8px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; min-height:80px; box-shadow:0 1px 4px rgba(0,0,0,0.06); -webkit-tap-highlight-color:transparent;" ontouchstart="this.style.transform=\'scale(0.93)\'" ontouchend="this.style.transform=\'scale(1)\'"><span style="font-size:13px; font-weight:700; color:var(--text);">Scan</span></button><button onclick="navTo(\'recommend\')" style="background:var(--surface); border:1.5px solid var(--border); border-radius:16px; padding:16px 8px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; min-height:80px; box-shadow:0 1px 4px rgba(0,0,0,0.06); -webkit-tap-highlight-color:transparent;" ontouchstart="this.style.transform=\'scale(0.93)\'" ontouchend="this.style.transform=\'scale(1)\'"><span style="font-size:13px; font-weight:700; color:var(--text);">Tips</span></button><button onclick="navTo(\'log\')" style="background:var(--surface); border:1.5px solid var(--border); border-radius:16px; padding:16px 8px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; min-height:80px; box-shadow:0 1px 4px rgba(0,0,0,0.06); -webkit-tap-highlight-color:transparent;" ontouchstart="this.style.transform=\'scale(0.93)\'" ontouchend="this.style.transform=\'scale(1)\'"><span style="font-size:13px; font-weight:700; color:var(--text);">View log</span></button></div></div>' +
           '<div class="card" style="margin:12px 16px 24px;"><p style="font-weight:600; margin-bottom:12px;">Recent Today</p><div id="recent-items"></div></div>';
         const greetEl = document.getElementById('dashboard-greeting');
         if (greetEl) greetEl.textContent = greet + ', ' + (currentUser.name || 'there') + '!';
@@ -3850,7 +3887,7 @@
     }
 
     function buildRecommendScreenHTML() {
-      return '<div style="padding:20px 20px 12px;"><h2 style="font-size:22px;font-weight:800;color:var(--text);">Nutrition Tips ✨</h2><p style="font-size:14px;color:var(--text-secondary);">Based on your profile and today\'s meals</p></div><div id="rec-initial" style="padding:0 16px;text-align:center;margin-top:24px;"><p style="font-size:48px;margin-bottom:12px;">🧠</p><button id="rec-btn" onclick="loadRecommendations()" class="btn btn-primary" style="max-width:300px;">Get My Recommendations</button><p style="font-size:13px;color:var(--text-muted);margin-top:10px;">Analyses your profile + today\'s meals</p></div><div id="rec-loading" style="display:none;padding:40px 16px;text-align:center;"><div style="width:48px;height:48px;border:3px solid #E8F5E9;border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 16px;"></div><p id="rec-loading-text" style="font-size:15px;color:var(--text-secondary);">Analysing your meals...</p></div><div id="rec-results" style="display:none;padding:0 16px 100px;"></div>';
+      return '<div style="padding:20px 20px 12px;"><h2 style="font-size:22px;font-weight:800;color:var(--text);">Your Tips</h2><p id="rec-subtitle" style="font-size:14px;color:var(--text-secondary);">Personalized for your day</p></div><div id="rec-initial" style="padding:0 16px;text-align:center;margin-top:24px;"><button id="rec-btn" onclick="loadRecommendations()" class="btn btn-primary" style="max-width:300px;">Get Tips</button><p style="font-size:13px;color:var(--text-muted);margin-top:10px;">Quick suggestions for your next meal</p></div><div id="rec-loading" style="display:none;padding:40px 16px;text-align:center;"><div style="width:48px;height:48px;border:3px solid #E8F5E9;border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 16px;"></div><p id="rec-loading-text" style="font-size:15px;color:var(--text-secondary);">Putting together your tips...</p></div><div id="rec-results" style="display:none;padding:0 16px 100px;"></div>';
     }
     function buildRecommendationCards(rec) {
       let html = '';
@@ -3860,7 +3897,7 @@
       if (rec.next_meal) {
         const meal = rec.next_meal;
         const suggestions = Array.isArray(meal.suggestions) ? meal.suggestions : [];
-        html += '<div class="card" style="margin-bottom:12px;"><div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;"><span style="font-size:20px;">🍽️</span><span style="font-weight:700; font-size:16px; color:var(--text);">Suggested Next Meal</span><span class="badge badge-green" style="margin-left:auto;">' + (meal.meal_type || '') + '</span></div>';
+        html += '<div class="card" style="margin-bottom:12px;"><div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;"><span style="width:24px;height:24px;border-radius:50%;background:var(--accent-soft);display:inline-flex;align-items:center;justify-content:center;"><span style="width:10px;height:10px;border-radius:50%;background:var(--primary);display:inline-block;"></span></span><span style="font-weight:700; font-size:16px; color:var(--text);">Suggested Next Meal</span><span class="badge badge-green" style="margin-left:auto;">' + (meal.meal_type || '') + '</span></div>';
         suggestions.forEach(function(s) {
           var priceStr = (s.price_range || s.price) ? ' ~' + (s.price_range || s.price) : '';
           html += '<div style="padding:10px 0; border-bottom:1px solid var(--border);"><div style="display:flex; justify-content:space-between; align-items:center;"><span style="font-weight:600; font-size:14px; color:var(--text);">' + (s.food || s.name || '') + '</span><span style="font-weight:800; color:var(--primary); font-size:14px;">' + (s.calories || 0) + ' kcal' + priceStr + '</span></div><p style="font-size:12px; color:var(--text-muted); margin-top:3px;">' + (s.portion || '') + (s.reason ? ' · ' + s.reason : '') + '</p></div>';
@@ -3868,18 +3905,18 @@
         html += '<p style="font-size:13px; color:var(--text-secondary); margin-top:10px; font-weight:600;">Meal total: ' + (meal.total_calories || 0) + ' kcal</p></div>';
       }
       if (Array.isArray(rec.foods_to_avoid_today) && rec.foods_to_avoid_today.length > 0) {
-        html += '<div class="card" style="border-left:4px solid var(--warning); margin-bottom:12px;"><p style="font-weight:700; font-size:15px; color:var(--text); margin-bottom:10px;">⚠️ Skip These Today</p><div style="display:flex; flex-wrap:wrap; gap:8px;">' + rec.foods_to_avoid_today.map(function(f) { return '<span style="background:var(--warning-soft); color:var(--warning); padding:5px 12px; border-radius:20px; font-size:13px; font-weight:600;">' + f + '</span>'; }).join('') + '</div></div>';
+        html += '<div class="card" style="border-left:4px solid var(--warning); margin-bottom:12px;"><p style="font-weight:700; font-size:15px; color:var(--text); margin-bottom:10px;">Skip These Today</p><div style="display:flex; flex-wrap:wrap; gap:8px;">' + rec.foods_to_avoid_today.map(function(f) { return '<span style="background:var(--warning-soft); color:var(--warning); padding:5px 12px; border-radius:20px; font-size:13px; font-weight:600;">' + f + '</span>'; }).join('') + '</div></div>';
       }
       if (rec.health_tip) {
-        html += '<div class="card" style="border-left:4px solid #1565C0; margin-bottom:12px;"><p style="font-size:15px; color:var(--text); line-height:1.5;">💡 ' + rec.health_tip + '</p></div>';
+        html += '<div class="card" style="border-left:4px solid #1565C0; margin-bottom:12px;"><p style="font-size:15px; color:var(--text); line-height:1.5;">' + rec.health_tip + '</p></div>';
       }
       if (rec.water_reminder) {
-        html += '<div class="card" style="background:#E3F2FD; border:none; margin-bottom:12px;"><p style="font-size:15px; color:#1565C0; line-height:1.5;">💧 ' + rec.water_reminder + '</p></div>';
+        html += '<div class="card" style="background:#E3F2FD; border:none; margin-bottom:12px;"><p style="font-size:15px; color:#1565C0; line-height:1.5;">' + rec.water_reminder + '</p></div>';
       }
       if (rec.goal_progress) {
-        html += '<div class="card" style="margin-bottom:12px;"><p style="font-size:14px; color:var(--text-secondary); line-height:1.5;">🎯 ' + rec.goal_progress + '</p></div>';
+        html += '<div class="card" style="margin-bottom:12px;"><p style="font-size:14px; color:var(--text-secondary); line-height:1.5;">' + rec.goal_progress + '</p></div>';
       }
-      html += '<button onclick="loadRecommendations()" class="btn btn-outline" style="margin:8px 0 24px;">Refresh Tips 🔄</button>';
+      html += '<button onclick="loadRecommendations()" class="btn btn-outline" style="margin:8px 0 24px;">Refresh Tips</button>';
       return html || '<p style="text-align:center;color:var(--text-secondary);padding:32px;">No recommendations available. Try scanning a meal first.</p>';
     }
     async function loadRecommendations() {
@@ -4034,22 +4071,30 @@
         if (p !== 'granted') { showToast('Enable notifications in browser settings', 'warning'); return; }
       }
       if (Notification.permission === 'denied') { showToast('Notifications blocked', 'warning'); return; }
+
+      const breakfastEnabled = document.getElementById('rem-breakfast') && document.getElementById('rem-breakfast').checked;
+      const lunchEnabled = document.getElementById('rem-lunch') && document.getElementById('rem-lunch').checked;
+      const dinnerEnabled = document.getElementById('rem-dinner') && document.getElementById('rem-dinner').checked;
       const waterEnabled = document.getElementById('reminder-water') && document.getElementById('reminder-water').checked;
-      if (waterEnabled) {
-        const now = new Date();
-        const nextHour = new Date(now);
-        nextHour.setMinutes(0, 0, 0);
-        nextHour.setHours(nextHour.getHours() + (2 - nextHour.getHours() % 2));
-        const msUntilFirst = Math.max(0, nextHour - now);
-        setTimeout(function() {
-          try {
-            new Notification('Smart AI Food Scanner', { body: 'Time to drink water! Stay hydrated for your ' + (currentUser && currentUser.goal ? currentUser.goal.replace(/_/g, ' ') : 'health') + ' goal.' });
-          } catch (e) {}
-          setInterval(function() {
-            try { new Notification('Smart AI Food Scanner', { body: 'Drink 250ml of water now!' }); } catch (e) {}
-          }, 2 * 60 * 60 * 1000);
-        }, msUntilFirst);
+
+      const tasks = [];
+      const bTime = document.getElementById('rem-breakfast-time');
+      const lTime = document.getElementById('rem-lunch-time');
+      const dTime = document.getElementById('rem-dinner-time');
+      if (bTime) tasks.push(apiCall('/reminders', 'POST', { type: 'breakfast', enabled: breakfastEnabled, scheduled_time: bTime.value || '08:00' }));
+      if (lTime) tasks.push(apiCall('/reminders', 'POST', { type: 'lunch', enabled: lunchEnabled, scheduled_time: lTime.value || '13:00' }));
+      if (dTime) tasks.push(apiCall('/reminders', 'POST', { type: 'dinner', enabled: dinnerEnabled, scheduled_time: dTime.value || '19:00' }));
+      tasks.push(apiCall('/reminders', 'POST', { type: 'water', enabled: waterEnabled, scheduled_time: '00:00' }));
+
+      try {
+        await Promise.all(tasks);
+      } catch (e) {
+        console.log('Reminder save failed', e);
+        showToast('Could not save reminders: ' + e.message, 'error');
+        return;
       }
+
+      await ensurePushSubscription();
       showToast('Reminders saved', 'success');
     }
     function handleLogout() {

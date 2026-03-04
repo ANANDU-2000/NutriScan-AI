@@ -1,19 +1,40 @@
 import os
 
 from contextlib import asynccontextmanager
+
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from database import Base, engine
+from database import Base, SessionLocal, engine
+from notification_service import check_and_send_due_reminders
 
 load_dotenv()
+
+_scheduler: AsyncIOScheduler | None = None
+
+
+def _run_reminder_job() -> None:
+    db = SessionLocal()
+    try:
+        check_and_send_due_reminders(db)
+    finally:
+        db.close()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _scheduler
     Base.metadata.create_all(bind=engine)
-    yield
+    _scheduler = AsyncIOScheduler()
+    _scheduler.add_job(_run_reminder_job, "cron", minute="*")
+    _scheduler.start()
+    try:
+        yield
+    finally:
+        if _scheduler:
+            _scheduler.shutdown()
 
 
 app = FastAPI(
@@ -40,13 +61,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from admin_routes import router as admin_router
 from auth import router as auth_router
 from food_routes import router as food_router
+from reminder_routes import router as reminder_router
 from user_routes import router as user_router
 
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(food_router, prefix="/food", tags=["Food"])
 app.include_router(user_router, prefix="/users", tags=["Users"])
+app.include_router(reminder_router, tags=["Reminders"])
+app.include_router(admin_router, tags=["Admin"])
 
 
 @app.get("/")

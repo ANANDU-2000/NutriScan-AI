@@ -1,3 +1,49 @@
+/* Basic service worker for NutriScan notifications */
+
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+  let data = {};
+  try {
+    data = event.data.json();
+  } catch (e) {
+    data = { title: 'NutriScan', body: event.data.text() };
+  }
+  const title = data.title || 'NutriScan';
+  const body = data.body || '';
+  const options = {
+    body,
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    data: data.payload || {},
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientsArr) => {
+      for (const client of clientsArr) {
+        if ('focus' in client) {
+          client.focus();
+          return;
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow('/');
+      }
+    })
+  );
+});
+
 const CACHE_STATIC = 'nutriscan-static-v2';
 const SHELL = ['/'];
 

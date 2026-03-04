@@ -48,7 +48,8 @@ Rules:
 6. If fat is HIGH: NEVER suggest coconut curry, fried items, ghee.
 7. If carbs are HIGH: NEVER suggest rice, bread, roti, starchy food.
 8. Always respect remaining calorie budget — next meal must fit within it.
-9. Use simple direct language. No generic phrases like "balanced diet"."""
+9. Use simple direct language in a natural, coaching tone.
+10. Do not use robotic phrases like "based on your profile" or "AI recommendation"."""
 
 
 def _get_client() -> AsyncOpenAI:
