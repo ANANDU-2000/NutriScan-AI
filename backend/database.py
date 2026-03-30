@@ -8,12 +8,14 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./nutriscan.db")
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+# Render Postgres requires TLS; putting sslmode on the URL is reliable for psycopg2 + SQLAlchemy
+if "postgresql" in DATABASE_URL and "sslmode" not in DATABASE_URL:
+    sep = "&" if "?" in DATABASE_URL else "?"
+    DATABASE_URL = DATABASE_URL + sep + "sslmode=require"
+
 _connect_args = {}
 if "sqlite" in DATABASE_URL:
     _connect_args = {"check_same_thread": False}
-elif "postgresql" in DATABASE_URL and "sslmode" not in DATABASE_URL:
-    # Render/external Postgres often requires TLS; pool_pre_ping avoids stale connections after idle
-    _connect_args = {"sslmode": "require"}
 
 engine = create_engine(
     DATABASE_URL,
@@ -31,6 +33,5 @@ def get_db():
     finally:
         db.close()
 
-
-# Ensure all tables (including new ones) are created without dropping existing data
-Base.metadata.create_all(bind=engine)
+# Tables are created in main.py lifespan — avoid connect/import-time DB calls here so the app
+# can boot even if the DB is briefly unavailable during deploy.
